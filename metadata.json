@@ -1,0 +1,6 @@
+{
+  "name": "SABI Oracle Head",
+  "description": "A standalone, multilingual, expressive AI character that wakes on approach, listens through its own microphone, understands Nigerian language patterns, and responds through its own voice and physical expressions.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
