@@ -28,11 +28,16 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
   const rightBrowRef = useRef<THREE.Mesh>(null);
   const auraInnerRef = useRef<THREE.Mesh>(null);
   const auraOuterRef = useRef<THREE.Mesh>(null);
-  const mouthRefs = useRef<(THREE.Mesh | null)[]>([]);
 
-  // 9 mouth equalizer bars for ultra-smooth acoustic curve
-  const numBars = 9;
-  const mouthBars = useMemo(() => Array.from({ length: numBars }), []);
+  const sigilRef = useRef<THREE.Group>(null);
+  const mouthTopRef = useRef<THREE.Mesh>(null);
+  const mouthBottomRef = useRef<THREE.Mesh>(null);
+  const irisRef = useRef<THREE.Group>(null);
+  const irisBladesRef = useRef<(THREE.Mesh | null)[]>([]);
+
+  // 9 mouth aperture blades for the radial iris (THINK only)
+  const numBlades = 9;
+  const blades = useMemo(() => Array.from({ length: numBlades }), []);
 
   // Pre-allocated runtime color buffer
   const runtimeColor = useMemo(() => new THREE.Color(), []);
@@ -161,71 +166,142 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
       rightMat.emissiveIntensity = THREE.MathUtils.lerp(rightMat.emissiveIntensity, targetIntensity, 0.18);
 
       let targetEyeScaleY = eyeScaleY;
+      
+      // Asymmetric drift for "aliveness"
+      const leftDriftX = Math.sin(time * 2.1) * 0.005;
+      const rightDriftX = Math.sin(time * 1.9 + 1.5) * 0.005;
+      const leftDriftY = Math.cos(time * 1.7) * 0.005;
+      const rightDriftY = Math.cos(time * 2.3 + 0.8) * 0.005;
+      
       let targetLeftBrowRotZ = 0;
       let targetRightBrowRotZ = 0;
-      let targetBrowY = 0.44;
+      let targetLeftBrowY = 0.25;
+      let targetRightBrowY = 0.25;
 
       if (state === 'SLEEP') {
         targetEyeScaleY = 0.06;
         targetLeftBrowRotZ = -0.06;
         targetRightBrowRotZ = 0.06;
-        targetBrowY = 0.38;
+        targetLeftBrowY = 0.23;
+        targetRightBrowY = 0.23;
       } else if (state === 'THINK') {
         targetEyeScaleY = 0.75;
-        targetLeftBrowRotZ = 0.25; // Inquisitive furrowed brows
-        targetRightBrowRotZ = -0.25;
-        targetBrowY = 0.36;
+        targetLeftBrowRotZ = 0.15; // Inquisitive furrowed brows
+        targetRightBrowRotZ = -0.15;
+        targetLeftBrowY = 0.22;
+        targetRightBrowY = 0.22;
       } else if (state === 'SPEAK') {
         targetEyeScaleY = eyeScaleY * (1.0 + Math.min(speakerLevel * 2.5, 0.4));
-        targetLeftBrowRotZ = Math.sin(time * 5) * 0.12;
-        targetRightBrowRotZ = -Math.sin(time * 5) * 0.12;
-        targetBrowY = 0.44 + Math.sin(time * 6) * 0.02;
+        targetLeftBrowRotZ = Math.sin(time * 5) * 0.06;
+        targetRightBrowRotZ = -Math.sin(time * 5.2) * 0.06;
+        targetLeftBrowY = 0.25 + Math.sin(time * 6) * 0.02;
+        targetRightBrowY = 0.25 + Math.sin(time * 6.3) * 0.02;
       } else if (state === 'LISTEN') {
         targetEyeScaleY = eyeScaleY * (1.05 + Math.min(micLevel * 3, 0.35));
-        targetLeftBrowRotZ = -0.12; // Raised, highly attentive
-        targetRightBrowRotZ = 0.12;
-        targetBrowY = 0.47 + Math.min(micLevel * 0.4, 0.06);
+        targetLeftBrowRotZ = -0.08; 
+        targetRightBrowRotZ = 0.08;
+        // Asymmetric listening eyebrows
+        targetLeftBrowY = 0.27 + Math.min(micLevel * 0.3, 0.05);
+        targetRightBrowY = 0.29 + Math.min(micLevel * 0.4, 0.07);
       }
+
+      // Base eye tracking logic from pointer
+      const targetLookX = pointer.x * 0.28;
+      const targetLookY = pointer.y * 0.22;
+
+      leftEyeRef.current.position.x = THREE.MathUtils.lerp(leftEyeRef.current.position.x, targetLookX * 0.4 + leftDriftX, 0.15);
+      leftEyeRef.current.position.y = THREE.MathUtils.lerp(leftEyeRef.current.position.y, -targetLookY * 0.4 + leftDriftY, 0.15);
+      
+      rightEyeRef.current.position.x = THREE.MathUtils.lerp(rightEyeRef.current.position.x, targetLookX * 0.4 + rightDriftX, 0.15);
+      rightEyeRef.current.position.y = THREE.MathUtils.lerp(rightEyeRef.current.position.y, -targetLookY * 0.4 + rightDriftY, 0.15);
 
       leftEyeRef.current.scale.y = THREE.MathUtils.lerp(leftEyeRef.current.scale.y, targetEyeScaleY, 0.3);
       rightEyeRef.current.scale.y = THREE.MathUtils.lerp(rightEyeRef.current.scale.y, targetEyeScaleY, 0.3);
 
       leftBrowRef.current.rotation.z = THREE.MathUtils.lerp(leftBrowRef.current.rotation.z, targetLeftBrowRotZ, 0.2);
       rightBrowRef.current.rotation.z = THREE.MathUtils.lerp(rightBrowRef.current.rotation.z, targetRightBrowRotZ, 0.2);
-      leftBrowRef.current.position.y = THREE.MathUtils.lerp(leftBrowRef.current.position.y, targetBrowY, 0.2);
-      rightBrowRef.current.position.y = THREE.MathUtils.lerp(rightBrowRef.current.position.y, targetBrowY, 0.2);
+      leftBrowRef.current.position.y = THREE.MathUtils.lerp(leftBrowRef.current.position.y, targetLeftBrowY, 0.2);
+      rightBrowRef.current.position.y = THREE.MathUtils.lerp(rightBrowRef.current.position.y, targetRightBrowY, 0.2);
     }
 
-    // 5. Mouth Acoustic Equalizer Wave
-    mouthRefs.current.forEach((bar, i) => {
-      if (!bar) return;
-      const mat = bar.material as THREE.MeshStandardMaterial;
-      const centerIndex = Math.floor(numBars / 2);
-      const distFromCenter = Math.abs(i - centerIndex);
-      const curveWeight = Math.cos((distFromCenter / centerIndex) * (Math.PI / 2.8));
+    // 5. Mouth Arcs & Iris Engine
+    if (mouthTopRef.current && mouthBottomRef.current) {
+      const matTop = mouthTopRef.current.material as THREE.MeshStandardMaterial;
+      const matBot = mouthBottomRef.current.material as THREE.MeshStandardMaterial;
+
+      let targetScaleYTop = 0.01;
+      let targetScaleYBot = 0.01;
+      let targetMouthIntensity = 0;
 
       if (state === 'SPEAK') {
-        const wave = Math.sin(time * 16 + i * 0.9) * 0.15;
         const speechAmp = Math.min(speakerLevel * 16, 2.6);
-        const targetScaleY = Math.max(0.18, speechAmp * curveWeight * 2.2 + wave);
-
-        bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, Math.min(targetScaleY, 3.2), 0.35);
-        mat.emissive.lerp(runtimeColor, 0.25);
-        mat.emissiveIntensity = targetIntensity * 1.1;
+        targetScaleYTop = 0.2 + speechAmp * 0.4;
+        targetScaleYBot = 0.2 + speechAmp * 0.4;
+        targetMouthIntensity = targetIntensity * 1.1;
+        matTop.emissive.lerp(runtimeColor, 0.2);
+        matBot.emissive.lerp(runtimeColor, 0.2);
       } else if (state === 'LISTEN') {
-        const micRipples = Math.sin(time * 8 + i * 0.6) * 0.08 * (0.2 + micLevel * 4);
-        bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, 0.22 + micRipples, 0.25);
-        mat.emissive.lerp(runtimeColor, 0.15);
-        mat.emissiveIntensity = 0.4 + micLevel * 3.0;
+        const micRipples = Math.sin(time * 8) * 0.02 * (0.2 + micLevel * 4);
+        targetScaleYTop = 0.02; // Flat top for smile
+        targetScaleYBot = 0.4 + micLevel * 1.5 + micRipples; // Deep lower smile
+        targetMouthIntensity = 0.4 + micLevel * 3.0;
+        matTop.emissive.lerp(runtimeColor, 0.15);
+        matBot.emissive.lerp(runtimeColor, 0.15);
+      } else if (state === 'THINK') {
+        targetScaleYTop = 0.001;
+        targetScaleYBot = 0.001;
+        targetMouthIntensity = 0;
       } else if (state === 'SLEEP') {
-        bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, 0.06, 0.1);
-        mat.emissiveIntensity = 0;
+        targetScaleYTop = 0.02;
+        targetScaleYBot = 0.02;
+        targetMouthIntensity = 0;
       } else {
-        bar.scale.y = THREE.MathUtils.lerp(bar.scale.y, 0.18, 0.2);
-        mat.emissive.lerp(runtimeColor, 0.1);
-        mat.emissiveIntensity = 0.35;
+        targetScaleYTop = 0.1;
+        targetScaleYBot = 0.1;
+        targetMouthIntensity = 0.35;
+        matTop.emissive.lerp(runtimeColor, 0.1);
+        matBot.emissive.lerp(runtimeColor, 0.1);
       }
-    });
+
+      mouthTopRef.current.scale.y = THREE.MathUtils.lerp(mouthTopRef.current.scale.y, targetScaleYTop, 0.2);
+      mouthBottomRef.current.scale.y = THREE.MathUtils.lerp(mouthBottomRef.current.scale.y, targetScaleYBot, 0.2);
+      
+      matTop.emissiveIntensity = THREE.MathUtils.lerp(matTop.emissiveIntensity, targetMouthIntensity, 0.2);
+      matBot.emissiveIntensity = THREE.MathUtils.lerp(matBot.emissiveIntensity, targetMouthIntensity, 0.2);
+    }
+
+    // Iris (Only visible during THINK)
+    if (irisRef.current) {
+      if (state === 'THINK') {
+        irisRef.current.visible = true;
+        irisRef.current.rotation.z += 0.02;
+        irisRef.current.scale.setScalar(THREE.MathUtils.lerp(irisRef.current.scale.x, 1.0, 0.1));
+      } else {
+        irisRef.current.scale.setScalar(THREE.MathUtils.lerp(irisRef.current.scale.x, 0.001, 0.2));
+        if (irisRef.current.scale.x < 0.01) irisRef.current.visible = false;
+      }
+      
+      irisBladesRef.current.forEach((blade, i) => {
+        if (!blade) return;
+        const mat = blade.material as THREE.MeshStandardMaterial;
+        mat.emissive.lerp(runtimeColor, 0.1);
+        mat.emissiveIntensity = THREE.MathUtils.lerp(mat.emissiveIntensity, 0.8, 0.1);
+      });
+    }
+
+    // 5b. Thinking Sigil Animation
+    if (sigilRef.current) {
+      if (state === 'THINK') {
+        sigilRef.current.scale.setScalar(THREE.MathUtils.lerp(sigilRef.current.scale.x, 1.0, 0.1));
+        sigilRef.current.rotation.z += 0.02;
+        sigilRef.current.visible = true;
+      } else {
+        sigilRef.current.scale.setScalar(THREE.MathUtils.lerp(sigilRef.current.scale.x, 0.001, 0.2));
+        if (sigilRef.current.scale.x < 0.01) {
+          sigilRef.current.visible = false;
+        }
+      }
+    }
 
     // 6. Dual Luminous Halo Aura
     if (auraInnerRef.current && auraOuterRef.current) {
@@ -320,16 +396,14 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
         <meshStandardMaterial color="#00d09c" emissive="#00d09c" emissiveIntensity={0.6} />
       </mesh>
 
-      {/* Front Face Visor (Deep Smoked Glass) */}
+      {/* Front Face Visor (Deep Smoked Glass Faux-Effect) */}
       <RoundedBox args={[2.18, 3.12, 0.18]} radius={0.6} smoothness={10} position={[0, 0, 0.9]}>
-        <meshPhysicalMaterial
+        <meshStandardMaterial
           color="#040605"
-          metalness={0.2}
-          roughness={0.05}
-          transmission={0.92}
-          thickness={0.5}
-          ior={1.5}
-          clearcoat={1.0}
+          metalness={0.9}
+          roughness={0.1}
+          transparent={true}
+          opacity={0.85}
         />
       </RoundedBox>
 
@@ -338,6 +412,12 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
         <RoundedBox args={[2.08, 3.0, 0.05]} radius={0.5} smoothness={4} position={[0, 0, 0.84]}>
           <meshStandardMaterial color="#0a0f0d" metalness={0.8} roughness={0.4} />
         </RoundedBox>
+
+        {/* Subtle Nose Bridge Landmark */}
+        <mesh position={[0, 0, 0.87]}>
+          <capsuleGeometry args={[0.08, 0.8, 4, 8]} />
+          <meshStandardMaterial color="#111815" roughness={0.6} metalness={0.9} />
+        </mesh>
 
         {/* Left Eye Assembly */}
         <group position={[-0.55, 0.52, 0.98]}>
@@ -349,9 +429,14 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
               emissiveIntensity={0.2}
               toneMapped={false}
             />
+            {/* Catchlight */}
+            <mesh position={[-0.04, 0.12, 0.12]}>
+              <sphereGeometry args={[0.03, 8, 8]} />
+              <meshBasicMaterial color="#ffffff" />
+            </mesh>
           </mesh>
-          <mesh ref={leftBrowRef} position={[0, 0.38, 0.02]}>
-            <capsuleGeometry args={[0.04, 0.24, 4, 8]} rotation={[0, 0, Math.PI / 2]} />
+          <mesh ref={leftBrowRef} position={[0, 0.25, 0.02]}>
+            <torusGeometry args={[0.18, 0.04, 8, 16, Math.PI]} />
             <meshStandardMaterial color="#000000" emissive="#00d09c" emissiveIntensity={0.2} toneMapped={false} />
           </mesh>
         </group>
@@ -366,25 +451,43 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
               emissiveIntensity={0.2}
               toneMapped={false}
             />
+            {/* Catchlight */}
+            <mesh position={[-0.04, 0.12, 0.12]}>
+              <sphereGeometry args={[0.03, 8, 8]} />
+              <meshBasicMaterial color="#ffffff" />
+            </mesh>
           </mesh>
-          <mesh ref={rightBrowRef} position={[0, 0.38, 0.02]}>
-            <capsuleGeometry args={[0.04, 0.24, 4, 8]} rotation={[0, 0, Math.PI / 2]} />
+          <mesh ref={rightBrowRef} position={[0, 0.25, 0.02]}>
+            <torusGeometry args={[0.18, 0.04, 8, 16, Math.PI]} />
             <meshStandardMaterial color="#000000" emissive="#00d09c" emissiveIntensity={0.2} toneMapped={false} />
           </mesh>
         </group>
 
-        {/* Dynamic Mouth Equalizer Grille */}
+        {/* Dynamic Curved Mouth (SLEEP / LISTEN / SPEAK) */}
         <group position={[0, -0.68, 0.98]}>
-          {mouthBars.map((_, i) => {
-            const centerIdx = Math.floor(numBars / 2);
-            const offset = (i - centerIdx) * 0.16;
+          <mesh ref={mouthTopRef} rotation={[0, 0, 0]}>
+            <torusGeometry args={[0.2, 0.04, 16, 32, Math.PI]} />
+            <meshStandardMaterial color="#000000" emissive="#000000" toneMapped={false} />
+          </mesh>
+          <mesh ref={mouthBottomRef} rotation={[0, 0, Math.PI]}>
+            <torusGeometry args={[0.2, 0.04, 16, 32, Math.PI]} />
+            <meshStandardMaterial color="#000000" emissive="#000000" toneMapped={false} />
+          </mesh>
+        </group>
+
+        {/* Oracle Thinking Radial Iris (Revealed only during THINK) */}
+        <group ref={irisRef} position={[0, -0.68, 0.98]} visible={false}>
+          {blades.map((_, i) => {
+            const angle = (i / numBlades) * Math.PI * 2;
+            const radius = 0.28;
             return (
               <mesh
                 key={i}
-                ref={(el) => (mouthRefs.current[i] = el)}
-                position={[offset, 0, 0]}
+                ref={(el) => (irisBladesRef.current[i] = el)}
+                position={[Math.cos(angle) * radius, Math.sin(angle) * radius, 0]}
+                rotation={[0, 0, angle + Math.PI / 2]}
               >
-                <capsuleGeometry args={[0.05, 0.18, 4, 8]} />
+                <boxGeometry args={[0.05, 0.16, 0.03]} />
                 <meshStandardMaterial
                   color="#000000"
                   emissive="#000000"
@@ -393,6 +496,18 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
               </mesh>
             );
           })}
+        </group>
+
+        {/* Oracle Thinking Sigil (Revealed only during THINK) */}
+        <group ref={sigilRef} position={[0, 1.25, 0.98]} scale={0.001} visible={false}>
+          <mesh rotation={[0, 0, Math.PI / 4]}>
+            <torusGeometry args={[0.2, 0.02, 16, 4]} />
+            <meshStandardMaterial color="#000000" emissive="#00d09c" emissiveIntensity={1.5} toneMapped={false} />
+          </mesh>
+          <mesh>
+            <circleGeometry args={[0.08, 3]} />
+            <meshStandardMaterial color="#000000" emissive="#00f5b8" emissiveIntensity={2.0} toneMapped={false} />
+          </mesh>
         </group>
       </group>
     </group>

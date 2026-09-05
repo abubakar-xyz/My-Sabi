@@ -61,6 +61,7 @@ export default function App() {
       {/* 3D Centerpiece Stage - Full Viewport, 100% Unobstructed */}
       <div className="absolute inset-0 z-0 cursor-grab active:cursor-grabbing">
         <Canvas
+          dpr={[1, 1.5]}
           camera={{
             position: [0, isMobile ? 0.05 : 0.1, isMobile ? 7.2 : 6.2],
             fov: isMobile ? 38 : 34,
@@ -84,6 +85,7 @@ export default function App() {
               scale={10}
               blur={2.5}
               far={4}
+              frames={1}
               color="#001a14"
             />
           </Suspense>

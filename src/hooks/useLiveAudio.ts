@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { pcmToBase64, base64ToPcm, resampleAudio, calculateRMS } from '../utils/audio';
+import { float32ToInt16Buffer, base64ToPcm, resampleAudio, calculateRMS } from '../utils/audio';
 import { uiSounds } from '../utils/sounds';
 
 export type SabiState = 'SLEEP' | 'WAKE' | 'LISTEN' | 'THINK' | 'SPEAK' | 'ERROR';
@@ -168,10 +168,12 @@ export function useLiveAudio() {
     setSabiState('SLEEP');
   }, [stopAllAudioSources]);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (retryCount = 0) => {
     try {
-      setErrorMessage(null);
-      setSabiState('WAKE');
+      if (retryCount === 0) {
+        setErrorMessage(null);
+        setSabiState('WAKE');
+      }
       
       const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       
@@ -191,12 +193,16 @@ export function useLiveAudio() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/live`;
       const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
+
+      let isIntentionalDisconnect = false;
 
       ws.onopen = async () => {
         setIsConnected(true);
         setSabiState('LISTEN');
         lastActivityTimeRef.current = Date.now();
+        setErrorMessage(null);
 
         // Gracefully attempt microphone capture without aborting connection if mic is unavailable
         try {
@@ -218,15 +224,46 @@ export function useLiveAudio() {
             streamRef.current = stream;
 
             const source = inputCtx.createMediaStreamSource(stream);
-            const processor = inputCtx.createScriptProcessor(2048, 1, 1);
-            processorRef.current = processor;
+            
+            // Modern AudioWorklet to prevent main-thread UI jank during audio capture
+            const workletCode = `
+              class SabiMicProcessor extends AudioWorkletProcessor {
+                constructor() {
+                  super();
+                  this.buffer = new Float32Array(2048);
+                  this.bufferIndex = 0;
+                }
+                process(inputs, outputs, parameters) {
+                  const input = inputs[0];
+                  if (input && input.length > 0 && input[0]) {
+                    const pcmFloat32 = input[0];
+                    for (let i = 0; i < pcmFloat32.length; i++) {
+                      this.buffer[this.bufferIndex++] = pcmFloat32[i];
+                      if (this.bufferIndex >= 2048) {
+                        // Post a copy of the buffer
+                        this.port.postMessage(new Float32Array(this.buffer));
+                        this.bufferIndex = 0;
+                      }
+                    }
+                  }
+                  return true;
+                }
+              }
+              registerProcessor('sabi-mic-processor', SabiMicProcessor);
+            `;
+            const blob = new Blob([workletCode], { type: 'application/javascript' });
+            const workletUrl = URL.createObjectURL(blob);
+            
+            await inputCtx.audioWorklet.addModule(workletUrl);
+            const workletNode = new AudioWorkletNode(inputCtx, 'sabi-mic-processor');
+            processorRef.current = workletNode as any;
 
-            source.connect(processor);
-            processor.connect(inputCtx.destination);
-
-            processor.onaudioprocess = (e) => {
+            source.connect(workletNode);
+            // DO NOT connect workletNode to inputCtx.destination to avoid feedback loop
+            
+            workletNode.port.onmessage = (e) => {
               if (ws.readyState === WebSocket.OPEN) {
-                const rawChannelData = e.inputBuffer.getChannelData(0);
+                const rawChannelData = e.data as Float32Array;
                 
                 const currentRms = calculateRMS(rawChannelData);
                 if (currentRms > 0.015) {
@@ -236,12 +273,14 @@ export function useLiveAudio() {
                 setMicLevel(micDecayRef.current);
 
                 const pcm16kData = resampleAudio(rawChannelData, hardwareSampleRate, 16000);
-                const base64 = pcmToBase64(pcm16kData);
-                ws.send(JSON.stringify({ audio: base64 }));
+                const int16Buffer = float32ToInt16Buffer(pcm16kData);
+                ws.send(int16Buffer); // Send purely binary ArrayBuffer directly to Node server
               } else {
                 setMicLevel(0);
               }
             };
+            
+            URL.revokeObjectURL(workletUrl);
           }
         } catch (micErr) {
           console.warn("[SABI] Microphone capture unavailable or permission pending:", micErr);
@@ -268,6 +307,7 @@ export function useLiveAudio() {
           }
           if (msg.idleShutdown) {
             // Sabi has finished speaking the farewell statement ("Since there's no one speaking, I'll shut down now")
+            isIntentionalDisconnect = true;
             const ctx = outputCtxRef.current;
             const remainingTimeMs = ctx ? Math.max(0, (nextStartTimeRef.current - ctx.currentTime) * 1000) : 0;
             window.setTimeout(() => {
@@ -279,15 +319,19 @@ export function useLiveAudio() {
         }
       };
 
-      ws.onclose = () => {
-        disconnect();
+      ws.onclose = (event) => {
+        if (!isIntentionalDisconnect && sabiState !== 'ERROR' && retryCount < 3) {
+          console.log(`[SABI] Connection dropped, reconnecting... (Attempt ${retryCount + 1})`);
+          setTimeout(() => {
+            connect(retryCount + 1);
+          }, 1000 * Math.pow(1.5, retryCount)); // Exponential backoff: 1s, 1.5s, 2.25s
+        } else {
+          disconnect();
+        }
       };
 
       ws.onerror = (err) => {
         console.error("WebSocket error:", err);
-        setErrorMessage((prev) => prev || "Connection interrupted. Tap to wake again.");
-        disconnect();
-        setSabiState('ERROR');
       };
     } catch (err: unknown) {
       console.error("Failed to initialize SABI voice connection:", err);

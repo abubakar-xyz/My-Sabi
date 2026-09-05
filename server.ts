@@ -56,7 +56,7 @@ async function startServer() {
 
     try {
       session = await ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: "gemini-2.5-flash-native-audio-latest",
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
             if (clientWs.readyState !== WebSocket.OPEN) return;
@@ -130,17 +130,22 @@ async function startServer() {
         turnComplete: true,
       });
 
-      clientWs.on("message", (data) => {
+      clientWs.on("message", (data, isBinary) => {
         try {
-          const parsed = JSON.parse(data.toString());
-          if (parsed.audio && session) {
+          if (isBinary && session) {
+            // Received pure binary PCM buffer from client, forward straight to Gemini
+            const audioBuffer = data as Buffer;
             session.sendRealtimeInput({
               audio: {
-                data: parsed.audio,
+                data: audioBuffer.toString("base64"),
                 mimeType: "audio/pcm;rate=16000",
               },
             });
-          } else if (parsed.text && session) {
+            return;
+          }
+
+          const parsed = JSON.parse(data.toString());
+          if (parsed.text && session) {
             console.log("[SABI Server] User sent prompt text:", parsed.text);
             session.sendClientContent({
               turns: [

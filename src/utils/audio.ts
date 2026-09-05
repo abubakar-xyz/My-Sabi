@@ -43,6 +43,21 @@ export function calculateRMS(data: Float32Array): number {
 }
 
 /**
+ * Converts Float32Array audio stream directly to 16-bit little-endian PCM ArrayBuffer.
+ */
+export function float32ToInt16Buffer(pcmData: Float32Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(pcmData.length * 2);
+  const view = new DataView(buffer);
+  
+  for (let i = 0; i < pcmData.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcmData[i]));
+    const int16 = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    view.setInt16(i * 2, int16, true); // Little-endian
+  }
+  return buffer;
+}
+
+/**
  * Converts Float32Array audio stream to 16-bit little-endian PCM Base64 string.
  */
 export function pcmToBase64(pcmData: Float32Array): string {
