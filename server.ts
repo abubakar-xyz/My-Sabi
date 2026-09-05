@@ -56,7 +56,7 @@ async function startServer() {
 
     try {
       session = await ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-latest",
+        model: "gemini-3.1-flash-live-preview",
         callbacks: {
           onmessage: (message: LiveServerMessage) => {
             if (clientWs.readyState !== WebSocket.OPEN) return;
@@ -135,12 +135,10 @@ async function startServer() {
           const parsed = JSON.parse(data.toString());
           if (parsed.audio && session) {
             session.sendRealtimeInput({
-              media: [
-                {
-                  data: parsed.audio,
-                  mimeType: "audio/pcm;rate=16000",
-                },
-              ],
+              audio: {
+                data: parsed.audio,
+                mimeType: "audio/pcm;rate=16000",
+              },
             });
           } else if (parsed.text && session) {
             console.log("[SABI Server] User sent prompt text:", parsed.text);

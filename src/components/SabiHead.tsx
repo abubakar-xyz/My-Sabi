@@ -51,48 +51,48 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
 
     // 1. Interactive Head Rotation (Looks subtly toward user pointer/touch)
     if (headRef.current) {
-      const baseScale = 0.95;
+      const baseScale = 0.82;
       let targetScale = baseScale;
 
       const visualSpeakerLvl = Math.min(speakerLevel * 18, 2.5);
       const visualMicLvl = Math.min(micLevel * 14, 2.0);
 
-      // Smooth interactive tracking toward mouse/touch coordinates
-      const targetLookX = pointer.x * 0.22;
-      const targetLookY = pointer.y * 0.16;
+      // Smooth interactive tracking toward mouse/touch coordinates (tuned for smaller scale)
+      const targetLookX = pointer.x * 0.28;
+      const targetLookY = pointer.y * 0.22;
 
       if (state === 'SPEAK') {
-        targetScale = baseScale + visualSpeakerLvl * 0.04;
-        const talkBob = Math.sin(time * 9) * (0.04 + visualSpeakerLvl * 0.04);
-        const talkTilt = Math.sin(time * 4.5) * (0.02 + visualSpeakerLvl * 0.03);
+        targetScale = baseScale + visualSpeakerLvl * 0.035;
+        const talkBob = Math.sin(time * 9) * (0.035 + visualSpeakerLvl * 0.035);
+        const talkTilt = Math.sin(time * 4.5) * (0.015 + visualSpeakerLvl * 0.025);
 
         headRef.current.position.y = THREE.MathUtils.lerp(headRef.current.position.y, talkBob, 0.12);
-        headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, visualSpeakerLvl * 0.25, 0.12);
+        headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, visualSpeakerLvl * 0.2, 0.12);
         headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -targetLookY + Math.sin(time * 6) * 0.04, 0.1);
         headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, targetLookX + talkTilt, 0.1);
         headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, Math.sin(time * 3) * 0.03, 0.08);
       } else if (state === 'LISTEN') {
         // Attentive tilt & lean forward when user speaks
-        const leanZ = 0.45 + visualMicLvl * 0.4;
+        const leanZ = 0.35 + visualMicLvl * 0.35;
         headRef.current.position.y = THREE.MathUtils.lerp(headRef.current.position.y, Math.sin(time * 2) * 0.02, 0.08);
         headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, leanZ, 0.08);
-        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -targetLookY + 0.08, 0.08);
+        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -targetLookY + 0.12, 0.08);
         headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, targetLookX, 0.08);
         headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, Math.sin(time * 0.7) * 0.02, 0.05);
       } else if (state === 'THINK') {
         // Pondering gentle head tilt
         headRef.current.position.y = THREE.MathUtils.lerp(headRef.current.position.y, Math.sin(time * 3) * 0.02, 0.08);
-        headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, 0.1, 0.08);
-        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -0.06, 0.08);
-        headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, Math.sin(time * 1.5) * 0.12, 0.08);
-        headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, 0.06, 0.08);
+        headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, 0.08, 0.08);
+        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -0.08, 0.08);
+        headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, Math.sin(time * 1.5) * 0.15, 0.08);
+        headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, 0.08, 0.08);
       } else {
         // SLEEP / IDLE: Soft organic breathing
         const breathY = Math.sin(time * 1.2) * 0.025;
         headRef.current.position.y = THREE.MathUtils.lerp(headRef.current.position.y, breathY, 0.05);
         headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, 0, 0.05);
-        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -targetLookY * 0.5, 0.05);
-        headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, targetLookX * 0.5, 0.05);
+        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -targetLookY * 0.6, 0.05);
+        headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, targetLookX * 0.6, 0.05);
         headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, 0, 0.05);
       }
 
@@ -292,55 +292,57 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
       </mesh>
 
       {/* Main Obsidian Chassis (Head Body) */}
-      <RoundedBox args={[2.5, 3.4, 1.9]} radius={0.75} smoothness={8} position={[0, 0, 0]}>
+      {/* Primary Cranium Chassis */}
+      <RoundedBox args={[2.35, 3.25, 1.85]} radius={0.75} smoothness={12} position={[0, 0, 0]}>
         <meshPhysicalMaterial
-          color="#070c0a"
-          roughness={0.18}
-          metalness={0.92}
+          color="#121614"
+          roughness={0.12}
+          metalness={0.94}
           clearcoat={1.0}
-          clearcoatRoughness={0.1}
-          reflectivity={0.9}
+          clearcoatRoughness={0.08}
+          reflectivity={0.95}
         />
       </RoundedBox>
 
       {/* Futuristic Cyber Inlay Strips (Side Temples) */}
-      <mesh position={[-1.27, 0.2, 0.1]}>
-        <boxGeometry args={[0.04, 2.0, 0.4]} />
+      <mesh position={[-1.22, 0.2, 0.1]}>
+        <boxGeometry args={[0.06, 1.9, 0.25]} />
         <meshStandardMaterial color="#00d09c" emissive="#00d09c" emissiveIntensity={0.8} />
       </mesh>
-      <mesh position={[1.27, 0.2, 0.1]}>
-        <boxGeometry args={[0.04, 2.0, 0.4]} />
+      <mesh position={[1.22, 0.2, 0.1]}>
+        <boxGeometry args={[0.06, 1.9, 0.25]} />
         <meshStandardMaterial color="#00d09c" emissive="#00d09c" emissiveIntensity={0.8} />
       </mesh>
 
       {/* Crown Inlay Strip (Top Apex) */}
-      <mesh position={[0, 1.72, 0.1]}>
-        <boxGeometry args={[1.2, 0.04, 0.6]} />
+      <mesh position={[0, 1.66, 0.1]}>
+        <boxGeometry args={[1.1, 0.04, 0.4]} />
         <meshStandardMaterial color="#00d09c" emissive="#00d09c" emissiveIntensity={0.6} />
       </mesh>
 
       {/* Front Face Visor (Deep Smoked Glass) */}
-      <RoundedBox args={[2.3, 3.2, 0.22]} radius={0.58} smoothness={8} position={[0, 0, 0.92]}>
+      <RoundedBox args={[2.18, 3.12, 0.18]} radius={0.6} smoothness={10} position={[0, 0, 0.9]}>
         <meshPhysicalMaterial
-          color="#000000"
-          metalness={0.3}
-          roughness={0.08}
-          transmission={0.85}
-          thickness={0.45}
-          ior={1.48}
+          color="#040605"
+          metalness={0.2}
+          roughness={0.05}
+          transmission={0.92}
+          thickness={0.5}
+          ior={1.5}
+          clearcoat={1.0}
         />
       </RoundedBox>
 
       {/* Internal Electronics Display Matrix */}
       <group ref={innerFaceRef}>
-        <RoundedBox args={[2.15, 3.05, 0.08]} radius={0.5} smoothness={4} position={[0, 0, 0.84]}>
-          <meshStandardMaterial color="#0c1210" metalness={0.7} roughness={0.5} />
+        <RoundedBox args={[2.08, 3.0, 0.05]} radius={0.5} smoothness={4} position={[0, 0, 0.84]}>
+          <meshStandardMaterial color="#0a0f0d" metalness={0.8} roughness={0.4} />
         </RoundedBox>
 
         {/* Left Eye Assembly */}
-        <group position={[-0.58, 0.52, 0.98]}>
+        <group position={[-0.55, 0.52, 0.98]}>
           <mesh ref={leftEyeRef}>
-            <capsuleGeometry args={[0.16, 0.38, 8, 16]} />
+            <capsuleGeometry args={[0.14, 0.35, 8, 16]} />
             <meshStandardMaterial
               color="#000000"
               emissive="#00261f"
@@ -348,16 +350,16 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
               toneMapped={false}
             />
           </mesh>
-          <mesh ref={leftBrowRef} position={[0, 0.42, 0.04]}>
-            <boxGeometry args={[0.38, 0.07, 0.04]} />
-            <meshStandardMaterial color="#1a2e26" metalness={0.8} roughness={0.2} />
+          <mesh ref={leftBrowRef} position={[0, 0.38, 0.02]}>
+            <capsuleGeometry args={[0.04, 0.24, 4, 8]} rotation={[0, 0, Math.PI / 2]} />
+            <meshStandardMaterial color="#000000" emissive="#00d09c" emissiveIntensity={0.2} toneMapped={false} />
           </mesh>
         </group>
 
         {/* Right Eye Assembly */}
-        <group position={[0.58, 0.52, 0.98]}>
+        <group position={[0.55, 0.52, 0.98]}>
           <mesh ref={rightEyeRef}>
-            <capsuleGeometry args={[0.16, 0.38, 8, 16]} />
+            <capsuleGeometry args={[0.14, 0.35, 8, 16]} />
             <meshStandardMaterial
               color="#000000"
               emissive="#00261f"
@@ -365,24 +367,24 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
               toneMapped={false}
             />
           </mesh>
-          <mesh ref={rightBrowRef} position={[0, 0.42, 0.04]}>
-            <boxGeometry args={[0.38, 0.07, 0.04]} />
-            <meshStandardMaterial color="#1a2e26" metalness={0.8} roughness={0.2} />
+          <mesh ref={rightBrowRef} position={[0, 0.38, 0.02]}>
+            <capsuleGeometry args={[0.04, 0.24, 4, 8]} rotation={[0, 0, Math.PI / 2]} />
+            <meshStandardMaterial color="#000000" emissive="#00d09c" emissiveIntensity={0.2} toneMapped={false} />
           </mesh>
         </group>
 
         {/* Dynamic Mouth Equalizer Grille */}
-        <group position={[0, -0.78, 0.98]}>
+        <group position={[0, -0.68, 0.98]}>
           {mouthBars.map((_, i) => {
             const centerIdx = Math.floor(numBars / 2);
-            const offset = (i - centerIdx) * 0.17;
+            const offset = (i - centerIdx) * 0.16;
             return (
               <mesh
                 key={i}
                 ref={(el) => (mouthRefs.current[i] = el)}
                 position={[offset, 0, 0]}
               >
-                <boxGeometry args={[0.09, 0.28, 0.04]} />
+                <capsuleGeometry args={[0.05, 0.18, 4, 8]} />
                 <meshStandardMaterial
                   color="#000000"
                   emissive="#000000"

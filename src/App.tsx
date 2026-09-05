@@ -62,8 +62,8 @@ export default function App() {
       <div className="absolute inset-0 z-0 cursor-grab active:cursor-grabbing">
         <Canvas
           camera={{
-            position: [0, isMobile ? 0.15 : 0.25, isMobile ? 7.6 : 6.8],
-            fov: isMobile ? 36 : 32,
+            position: [0, isMobile ? 0.05 : 0.1, isMobile ? 7.2 : 6.2],
+            fov: isMobile ? 38 : 34,
           }}
         >
           <ambientLight intensity={0.55} />

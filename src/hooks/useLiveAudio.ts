@@ -87,7 +87,7 @@ export function useLiveAudio() {
     // Seamless jitter-buffered scheduling
     const now = ctx.currentTime;
     if (nextStartTimeRef.current < now) {
-      nextStartTimeRef.current = now + 0.025; // 25ms jitter buffer
+      nextStartTimeRef.current = now + 0.150; // 150ms jitter buffer for network latency
     }
     
     source.start(nextStartTimeRef.current);
@@ -229,7 +229,7 @@ export function useLiveAudio() {
                 const rawChannelData = e.inputBuffer.getChannelData(0);
                 
                 const currentRms = calculateRMS(rawChannelData);
-                if (currentRms > 0.035) {
+                if (currentRms > 0.015) {
                   lastActivityTimeRef.current = Date.now();
                 }
                 micDecayRef.current = Math.max(currentRms, micDecayRef.current * 0.82);
