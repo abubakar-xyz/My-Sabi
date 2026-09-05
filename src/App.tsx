@@ -5,11 +5,13 @@
 
 import React, { Suspense, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { ContactShadows, OrbitControls } from '@react-three/drei';
+import { ContactShadows, OrbitControls, Html } from '@react-three/drei';
 import { SabiHead } from './components/SabiHead';
 import { useLiveAudio } from './hooks/useLiveAudio';
 import { Power, Mic, Volume2, Sparkles, AlertCircle, Radio } from 'lucide-react';
 import { uiSounds } from './utils/sounds';
+
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const {
@@ -63,7 +65,7 @@ export default function App() {
         <Canvas
           dpr={[1, 1.5]}
           camera={{
-            position: [0, isMobile ? 0.05 : 0.1, isMobile ? 7.2 : 6.2],
+            position: [0, isMobile ? 0.65 : 0.5, isMobile ? 7.0 : 6.0],
             fov: isMobile ? 38 : 34,
           }}
         >
@@ -73,26 +75,45 @@ export default function App() {
           <directionalLight position={[-10, -8, -6]} intensity={1.3} color="#00d09c" />
           <directionalLight position={[0, 12, -8]} intensity={1.1} color="#ffffff" />
           
-          <Suspense fallback={null}>
-            <SabiHead
-              state={sabiState}
-              micLevel={micLevel}
-              speakerLevel={speakerLevel}
-            />
-            <ContactShadows
-              position={[0, -2.6, 0]}
-              opacity={0.65}
-              scale={10}
-              blur={2.5}
-              far={4}
-              frames={1}
-              color="#001a14"
-            />
-          </Suspense>
+          <ErrorBoundary fallback={
+            <Html center>
+              <div className="flex items-center justify-center flex-col gap-4 text-emerald-400/70 p-8 text-center bg-black/80 rounded-2xl border border-red-500/30 backdrop-blur-md w-80">
+                <AlertCircle size={32} className="text-red-500/80 mb-2" />
+                <h2 className="text-xl font-bold text-red-400">Sensor Failure</h2>
+                <p className="text-sm">Sabi's visual cortex encountered a fatal error. The voice connection may still be active.</p>
+                <button 
+                  onClick={() => window.location.reload()} 
+                  className="mt-4 px-4 py-2 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/10 transition-colors pointer-events-auto"
+                >
+                  Reboot Sabi
+                </button>
+              </div>
+            </Html>
+          }>
+            <Suspense fallback={null}>
+              <group position={[0, isMobile ? 0.65 : 0.5, 0]}>
+                <SabiHead
+                  state={sabiState}
+                  micLevel={micLevel}
+                  speakerLevel={speakerLevel}
+                />
+                <ContactShadows
+                  position={[0, -2.1, 0]}
+                  opacity={0.65}
+                  scale={10}
+                  blur={2.5}
+                  far={4}
+                  frames={1}
+                  color="#001a14"
+                />
+              </group>
+            </Suspense>
+          </ErrorBoundary>
           
           <OrbitControls 
             enablePan={false}
             enableZoom={false}
+            target={[0, isMobile ? 0.65 : 0.5, 0]}
             minPolarAngle={Math.PI / 2.6}
             maxPolarAngle={Math.PI / 1.45}
             minAzimuthAngle={-Math.PI / 3.5}

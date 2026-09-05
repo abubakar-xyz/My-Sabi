@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { float32ToInt16Buffer, base64ToPcm, resampleAudio, calculateRMS } from '../utils/audio';
+import { float32ToInt16Buffer, bufferToPcm, resampleAudio, calculateRMS } from '../utils/audio';
 import { uiSounds } from '../utils/sounds';
 
 export type SabiState = 'SLEEP' | 'WAKE' | 'LISTEN' | 'THINK' | 'SPEAK' | 'ERROR';
@@ -46,6 +46,12 @@ export function useLiveAudio() {
   const isIdleShuttingDownRef = useRef<boolean>(false);
   const idleFailsafeTimeoutRef = useRef<number | null>(null);
 
+  // Speech tracking and echo suppression refs
+  const isSpeakingRef = useRef<boolean>(false);
+  const speechStartTimeRef = useRef<number>(0);
+  const loudFramesDuringSpeechRef = useRef<number>(0);
+  const wakeFallbackTimeoutRef = useRef<number | null>(null);
+
   const stopAllAudioSources = useCallback(() => {
     activeSourcesRef.current.forEach((source) => {
       try {
@@ -60,19 +66,26 @@ export function useLiveAudio() {
       window.clearTimeout(speakingTimeoutRef.current);
       speakingTimeoutRef.current = null;
     }
+    isSpeakingRef.current = false;
+    loudFramesDuringSpeechRef.current = 0;
     setSpeakerLevel(0);
     speakerDecayRef.current = 0;
   }, []);
 
-  const playAudioChunk = useCallback((base64Audio: string) => {
+  const playAudioChunk = useCallback((audioBuffer: ArrayBuffer) => {
     if (!outputCtxRef.current) return;
     const ctx = outputCtxRef.current;
     if (ctx.state === 'suspended') {
       ctx.resume().catch(() => {});
     }
+
+    if (wakeFallbackTimeoutRef.current) {
+      window.clearTimeout(wakeFallbackTimeoutRef.current);
+      wakeFallbackTimeoutRef.current = null;
+    }
     
     // Decode 24kHz PCM from Gemini
-    const pcmData = base64ToPcm(base64Audio);
+    const pcmData = bufferToPcm(audioBuffer);
     
     // Explicit 24,000 Hz buffer for Gemini output
     const buffer = ctx.createBuffer(1, pcmData.length, 24000);
@@ -93,6 +106,12 @@ export function useLiveAudio() {
     source.start(nextStartTimeRef.current);
     nextStartTimeRef.current += buffer.duration;
     
+    if (!isSpeakingRef.current) {
+      isSpeakingRef.current = true;
+      speechStartTimeRef.current = Date.now();
+      loudFramesDuringSpeechRef.current = 0;
+    }
+
     setSabiState('SPEAK');
     lastActivityTimeRef.current = Date.now();
     
@@ -108,6 +127,8 @@ export function useLiveAudio() {
     // Schedule return to LISTEN after speech completes
     const remainingTimeMs = Math.max(0, (nextStartTimeRef.current - now) * 1000);
     speakingTimeoutRef.current = window.setTimeout(() => {
+      isSpeakingRef.current = false;
+      loudFramesDuringSpeechRef.current = 0;
       setSabiState('LISTEN');
       setSpeakerLevel(0);
       speakerDecayRef.current = 0;
@@ -125,11 +146,17 @@ export function useLiveAudio() {
   const disconnect = useCallback(() => {
     stopAllAudioSources();
 
+    if (wakeFallbackTimeoutRef.current) {
+      window.clearTimeout(wakeFallbackTimeoutRef.current);
+      wakeFallbackTimeoutRef.current = null;
+    }
     if (idleFailsafeTimeoutRef.current) {
       window.clearTimeout(idleFailsafeTimeoutRef.current);
       idleFailsafeTimeoutRef.current = null;
     }
     isIdleShuttingDownRef.current = false;
+    isSpeakingRef.current = false;
+    loudFramesDuringSpeechRef.current = 0;
 
     if (wsRef.current) {
       try {
@@ -187,6 +214,7 @@ export function useLiveAudio() {
         await outputCtx.resume();
       }
       uiSounds.setContext(outputCtx);
+      uiSounds.playWake();
       nextStartTimeRef.current = outputCtx.currentTime;
       lastActivityTimeRef.current = Date.now();
 
@@ -200,9 +228,22 @@ export function useLiveAudio() {
 
       ws.onopen = async () => {
         setIsConnected(true);
-        setSabiState('LISTEN');
+        // Keep Sabi in 'WAKE' so the active wake-up animation and aura display until the greeting speaks!
+        // A fallback timer smoothly transitions to LISTEN if no greeting arrives after 4 seconds
         lastActivityTimeRef.current = Date.now();
         setErrorMessage(null);
+
+        if (wakeFallbackTimeoutRef.current) {
+          window.clearTimeout(wakeFallbackTimeoutRef.current);
+        }
+        wakeFallbackTimeoutRef.current = window.setTimeout(() => {
+          setSabiState((prev) => (prev === 'WAKE' ? 'LISTEN' : prev));
+        }, 4000);
+
+        // Explicitly notify server to greet immediately if ready
+        try {
+          ws.send(JSON.stringify({ action: "wake_greeting" }));
+        } catch {}
 
         // Gracefully attempt microphone capture without aborting connection if mic is unavailable
         try {
@@ -272,9 +313,28 @@ export function useLiveAudio() {
                 micDecayRef.current = Math.max(currentRms, micDecayRef.current * 0.82);
                 setMicLevel(micDecayRef.current);
 
-                const pcm16kData = resampleAudio(rawChannelData, hardwareSampleRate, 16000);
-                const int16Buffer = float32ToInt16Buffer(pcm16kData);
-                ws.send(int16Buffer); // Send purely binary ArrayBuffer directly to Node server
+                // Smart Gating & Echo Suppression:
+                // While Sabi is speaking, device speaker bleed into mic is typical RMS 0.015 - 0.065.
+                // Sending that back causes Gemini to falsely interrupt Sabi mid-sentence.
+                // We forward mic frames if:
+                // 1) Sabi is NOT speaking, OR
+                // 2) The user is intentionally speaking loudly over Sabi (RMS >= 0.08) for sustained frames
+                let shouldForward = true;
+                if (isSpeakingRef.current) {
+                  if (currentRms >= 0.08) {
+                    loudFramesDuringSpeechRef.current += 1;
+                    shouldForward = loudFramesDuringSpeechRef.current >= 2;
+                  } else {
+                    loudFramesDuringSpeechRef.current = Math.max(0, loudFramesDuringSpeechRef.current - 1);
+                    shouldForward = false;
+                  }
+                }
+
+                if (shouldForward) {
+                  const pcm16kData = resampleAudio(rawChannelData, hardwareSampleRate, 16000);
+                  const int16Buffer = float32ToInt16Buffer(pcm16kData);
+                  ws.send(int16Buffer); // Send purely binary ArrayBuffer directly to Node server
+                }
               } else {
                 setMicLevel(0);
               }
@@ -289,6 +349,11 @@ export function useLiveAudio() {
 
       ws.onmessage = (event) => {
         try {
+          if (event.data instanceof ArrayBuffer) {
+            playAudioChunk(event.data);
+            return;
+          }
+
           const msg = JSON.parse(event.data);
           if (msg.error) {
             console.warn("[SABI] Server sent error:", msg.error);
@@ -296,14 +361,20 @@ export function useLiveAudio() {
             setSabiState('ERROR');
             return;
           }
-          if (msg.audio) {
-            playAudioChunk(msg.audio);
-          }
           if (msg.interrupted) {
-            // Instant barge-in: user spoke while Sabi was speaking
-            stopAllAudioSources();
-            nextStartTimeRef.current = outputCtxRef.current?.currentTime || 0;
-            setSabiState('LISTEN');
+            // Intelligent Barge-in Guard:
+            // Sabi should not be cut off in the first 1400ms or by quiet speaker bleed
+            const speechAge = Date.now() - speechStartTimeRef.current;
+            const isIntentional = speechAge > 1400 && loudFramesDuringSpeechRef.current >= 2;
+
+            if (isIntentional) {
+              console.log("[SABI] Intentional user interruption detected. Stopping playback.");
+              stopAllAudioSources();
+              nextStartTimeRef.current = outputCtxRef.current?.currentTime || 0;
+              setSabiState('LISTEN');
+            } else {
+              console.log(`[SABI] Echo guard active: ignored interruption (speech age: ${speechAge}ms, loud frames: ${loudFramesDuringSpeechRef.current})`);
+            }
           }
           if (msg.idleShutdown) {
             // Sabi has finished speaking the farewell statement ("Since there's no one speaking, I'll shut down now")

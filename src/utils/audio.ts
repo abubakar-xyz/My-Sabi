@@ -58,47 +58,15 @@ export function float32ToInt16Buffer(pcmData: Float32Array): ArrayBuffer {
 }
 
 /**
- * Converts Float32Array audio stream to 16-bit little-endian PCM Base64 string.
+ * Converts ArrayBuffer (16-bit little-endian PCM) from Gemini Live back to Float32Array.
  */
-export function pcmToBase64(pcmData: Float32Array): string {
-  const buffer = new ArrayBuffer(pcmData.length * 2);
+export function bufferToPcm(buffer: ArrayBuffer): Float32Array {
   const view = new DataView(buffer);
-  
-  for (let i = 0; i < pcmData.length; i++) {
-    const s = Math.max(-1, Math.min(1, pcmData[i]));
-    const int16 = s < 0 ? s * 0x8000 : s * 0x7FFF;
-    view.setInt16(i * 2, int16, true); // Little-endian
-  }
-
-  const bytes = new Uint8Array(buffer);
-  const chars: string[] = [];
-  const chunkSize = 0x8000; // 32KB chunks to prevent call stack overflow
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    chars.push(String.fromCharCode.apply(null, chunk as unknown as number[]));
-  }
-  return btoa(chars.join(''));
-}
-
-/**
- * Converts Base64 string from Gemini Live (24kHz 16-bit PCM) back to Float32Array.
- */
-export function base64ToPcm(base64: string): Float32Array {
-  const binary = atob(base64);
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  
-  const view = new DataView(buffer);
-  const float32Array = new Float32Array(binary.length / 2);
+  const float32Array = new Float32Array(buffer.byteLength / 2);
   
   for (let i = 0; i < float32Array.length; i++) {
     const val = view.getInt16(i * 2, true); // Little-endian
     float32Array[i] = val < 0 ? val / 0x8000 : val / 0x7FFF;
   }
-  
   return float32Array;
 }

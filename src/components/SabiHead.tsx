@@ -91,6 +91,14 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
         headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -0.08, 0.08);
         headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, Math.sin(time * 1.5) * 0.15, 0.08);
         headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, 0.08, 0.08);
+      } else if (state === 'WAKE') {
+        // High-energy awakening: perky buoyant rise, welcoming head lift, lively posture
+        targetScale = baseScale + 0.05;
+        headRef.current.position.y = THREE.MathUtils.lerp(headRef.current.position.y, 0.14 + Math.sin(time * 6) * 0.02, 0.15);
+        headRef.current.position.z = THREE.MathUtils.lerp(headRef.current.position.z, 0.28, 0.15);
+        headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, -0.06, 0.12);
+        headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, Math.sin(time * 2.5) * 0.08, 0.12);
+        headRef.current.rotation.z = THREE.MathUtils.lerp(headRef.current.rotation.z, Math.sin(time * 3) * 0.03, 0.1);
       } else {
         // SLEEP / IDLE: Soft organic breathing
         const breathY = Math.sin(time * 1.2) * 0.025;
@@ -203,6 +211,12 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
         // Asymmetric listening eyebrows
         targetLeftBrowY = 0.27 + Math.min(micLevel * 0.3, 0.05);
         targetRightBrowY = 0.29 + Math.min(micLevel * 0.4, 0.07);
+      } else if (state === 'WAKE') {
+        targetEyeScaleY = 1.35; // Bright, wide-open eyes full of life
+        targetLeftBrowRotZ = 0.08;
+        targetRightBrowRotZ = -0.08;
+        targetLeftBrowY = 0.32; // Elevated enthusiastic brows
+        targetRightBrowY = 0.32;
       }
 
       // Base eye tracking logic from pointer
@@ -247,6 +261,13 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
         targetMouthIntensity = 0.4 + micLevel * 3.0;
         matTop.emissive.lerp(runtimeColor, 0.15);
         matBot.emissive.lerp(runtimeColor, 0.15);
+      } else if (state === 'WAKE') {
+        // Welcoming radiant smile
+        targetScaleYTop = 0.04;
+        targetScaleYBot = 0.65;
+        targetMouthIntensity = 2.0;
+        matTop.emissive.lerp(runtimeColor, 0.25);
+        matBot.emissive.lerp(runtimeColor, 0.25);
       } else if (state === 'THINK') {
         targetScaleYTop = 0.001;
         targetScaleYBot = 0.001;
@@ -388,12 +409,6 @@ export function SabiHead({ state, micLevel, speakerLevel }: SabiHeadProps) {
       <mesh position={[1.22, 0.2, 0.1]}>
         <boxGeometry args={[0.06, 1.9, 0.25]} />
         <meshStandardMaterial color="#00d09c" emissive="#00d09c" emissiveIntensity={0.8} />
-      </mesh>
-
-      {/* Crown Inlay Strip (Top Apex) */}
-      <mesh position={[0, 1.66, 0.1]}>
-        <boxGeometry args={[1.1, 0.04, 0.4]} />
-        <meshStandardMaterial color="#00d09c" emissive="#00d09c" emissiveIntensity={0.6} />
       </mesh>
 
       {/* Front Face Visor (Deep Smoked Glass Faux-Effect) */}
